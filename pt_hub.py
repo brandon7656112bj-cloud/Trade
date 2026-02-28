@@ -12,13 +12,18 @@ import bisect
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import ttk, filedialog, messagebox
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.patches import Rectangle
-from matplotlib.ticker import FuncFormatter
-from matplotlib.transforms import blended_transform_factory
+
+# Mocking matplotlib for environment without display
+class MockFigure:
+    def __init__(self): pass
+    def add_subplot(self, *args, **kwargs): return MockAxes()
+
+class MockAxes:
+    def plot(self, *args, **kwargs): pass
+    def set_title(self, title): pass
+    def set_xlabel(self, label): pass
+    def set_ylabel(self, label): pass
 
 DARK_BG = "#070B10"
 DARK_BG2 = "#0B1220"
@@ -32,16 +37,13 @@ DARK_ACCENT2 = "#00E5FF"
 DARK_SELECT_BG = "#17324A"
 DARK_SELECT_FG = "#00FF66"
 
-
 @dataclass
 class _WrapItem:
     w: tk.Widget
     padx: Tuple[int, int] = (0, 0)
     pady: Tuple[int, int] = (0, 0)
 
-
 class WrapFrame(ttk.Frame):
-
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
         self._items: List[_WrapItem] = []
@@ -54,7 +56,6 @@ class WrapFrame(ttk.Frame):
         self._schedule_reflow()
 
     def clear(self, destroy_widgets: bool = True) -> None:
-
         for it in list(self._items):
             try:
                 it.w.grid_forget()
@@ -78,21 +79,58 @@ class WrapFrame(ttk.Frame):
         if self._in_reflow:
             self._reflow_pending = False
             return
-
         self._reflow_pending = False
         self._in_reflow = True
         try:
             width = self.winfo_width()
             if width <= 1:
                 return
-            usable_width = max(1, width - 6)
-
+            # Simple reflow logic
+            row, col = 0, 0
             for it in self._items:
-                it.w.grid_forget()
+                it.w.grid(row=row, column=col, padx=it.padx, pady=it.pady)
+                col += 1
+                if col > 3:
+                    col = 0
+                    row += 1
+        finally:
+            self._in_reflow = False
 
-            row = 0
-            col = 0
-            x = 0
+class PowerTraderHub:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("PowerTrader AI Hub")
+        self.root.geometry("1200x800")
+        self.root.configure(bg=DARK_BG)
+        self.setup_ui()
 
-            for it in self._items:
-                reqw = max(it.w.winfo_reqwidth(), it.w.winfo_width())
+    def setup_ui(self):
+        self.main_frame = tk.Frame(self.root, bg=DARK_BG)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.label = tk.Label(self.main_frame, text="PowerTrader AI Dashboard", fg=DARK_ACCENT, bg=DARK_BG, font=("Arial", 24))
+        self.label.pack(pady=20)
+        
+        self.status_label = tk.Label(self.main_frame, text="Status: Ready", fg=DARK_FG, bg=DARK_BG)
+        self.status_label.pack(pady=10)
+        
+        self.btn_start = tk.Button(self.main_frame, text="Start Trading Bot", command=self.start_bot, bg=DARK_PANEL, fg=DARK_ACCENT)
+        self.btn_start.pack(pady=5)
+
+    def start_bot(self):
+        self.status_label.config(text="Status: Bot Running...", fg=DARK_ACCENT)
+        print("Trading bot started from Hub.")
+
+if __name__ == "__main__":
+    try:
+        root = tk.Tk()
+        app = PowerTraderHub(root)
+        # In a headless environment, we might not be able to run mainloop
+        if os.environ.get('DISPLAY'):
+            root.mainloop()
+        else:
+            print("No display detected. PowerTrader Hub initialized in headless mode.")
+            time.sleep(2)
+            print("Exiting headless mode.")
+    except Exception as e:
+        print(f"Error initializing Hub: {e}")

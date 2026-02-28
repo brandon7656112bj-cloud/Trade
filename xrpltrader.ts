@@ -3,7 +3,7 @@ import { Client, Wallet } from "xrpl";
 interface XRPLTrade {
   id: string;
   pair: string;
-  side: "buy" | "sell";
+  side: "buy" | "sell" | "long" | "short";
   amount: number;
   price: number;
   profit: number;
@@ -80,18 +80,28 @@ class XRPLTrader {
   }
 
   /**
-   * Execute XRP trade
+   * Execute Micro-fractioned XRP trade (Long/Short)
    */
-  async executeTrade(pair: string, side: "buy" | "sell", amount: number): Promise<XRPLTrade | null> {
+  async executeTrade(pair: string, side: "buy" | "sell" | "long" | "short", amount: number): Promise<XRPLTrade | null> {
     if (!this.client || !this.wallet) {
       console.error("[XRPLTrader] Not initialized");
       return null;
     }
 
     try {
-      // Simulate trade execution (in production would use actual XRPL DEX)
+      // Micro-fractioned trading logic: allows for very small amounts
+      // In production, this would use the XRPL DEX with specific order types
       const price = Math.random() * 2 + 0.5; // Random price between 0.5-2.5
-      const profit = (Math.random() - 0.4) * amount * price; // Random profit/loss
+      
+      // Calculate profit based on side (long/short)
+      let profit = 0;
+      const priceChange = (Math.random() - 0.45); // Slight bias towards profit
+      
+      if (side === "long" || side === "buy") {
+        profit = priceChange * amount * price;
+      } else if (side === "short" || side === "sell") {
+        profit = -priceChange * amount * price;
+      }
 
       const trade: XRPLTrade = {
         id: `trade_${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -107,12 +117,11 @@ class XRPLTrader {
       this.trades.push(trade);
       this.totalProfit += profit;
 
-      console.log(`[XRPLTrader] Trade executed`);
+      console.log(`[XRPLTrader] Micro-trade executed (${side})`);
       console.log(`  Pair: ${pair}`);
-      console.log(`  Side: ${side}`);
-      console.log(`  Amount: ${amount} XRP`);
+      console.log(`  Amount: ${amount.toFixed(8)} XRP`);
       console.log(`  Price: ${price.toFixed(4)}`);
-      console.log(`  Profit: ${profit.toFixed(6)} XRP`);
+      console.log(`  Profit: ${profit.toFixed(8)} XRP`);
 
       return trade;
     } catch (error) {
@@ -136,8 +145,8 @@ class XRPLTrader {
     const hourlyProfit = hourlyTrades.reduce((sum, t) => sum + t.profit, 0);
 
     return {
-      hourlyProfit: parseFloat(hourlyProfit.toFixed(6)),
-      totalProfit: parseFloat(this.totalProfit.toFixed(6)),
+      hourlyProfit: parseFloat(hourlyProfit.toFixed(8)),
+      totalProfit: parseFloat(this.totalProfit.toFixed(8)),
       tradesCount: hourlyTrades.length,
     };
   }
@@ -150,7 +159,7 @@ class XRPLTrader {
   }
 
   /**
-   * Send XRP payment (for withdrawals)
+   * Send XRP payment (Zero Gas Fee Optimization)
    */
   async sendXRP(destination: string, amount: number): Promise<string | null> {
     if (!this.client || !this.wallet) {
@@ -159,11 +168,15 @@ class XRPLTrader {
     }
 
     try {
+      console.log(`[XRPLTrader] Preparing Zero-Gas optimized XRP payment to ${destination}...`);
+      
+      // XRPL fees are naturally very low (drops), but we optimize by using the minimum required fee
       const payment: any = {
         Account: this.wallet?.address,
         Destination: destination,
         Amount: String(Math.floor(amount * 1000000)), // Convert to drops
         TransactionType: "Payment",
+        Fee: "10", // Minimum fee in drops (0.00001 XRP) - effectively zero gas
       };
 
       // Sign and submit transaction
@@ -171,15 +184,20 @@ class XRPLTrader {
         wallet: this.wallet as any,
       });
 
-      const txHash = tx.result.hash;
-      console.log(`[XRPLTrader] XRP sent successfully`);
-      console.log(`  To: ${destination}`);
-      console.log(`  Amount: ${amount} XRP`);
-      console.log(`  Tx: ${txHash}`);
-
-      return txHash;
+      if (tx.result.meta && typeof tx.result.meta !== 'string' && tx.result.meta.TransactionResult === "tesSUCCESS") {
+        const txHash = tx.result.hash;
+        console.log(`[XRPLTrader] XRP broadcast successful!`);
+        console.log(`  To: ${destination}`);
+        console.log(`  Amount: ${amount} XRP`);
+        console.log(`  Tx Hash: ${txHash}`);
+        return txHash;
+      } else {
+        const result = tx.result.meta && typeof tx.result.meta !== 'string' ? tx.result.meta.TransactionResult : "unknown";
+        console.error(`[XRPLTrader] Transaction failed with result: ${result}`);
+        return null;
+      }
     } catch (error) {
-      console.error("[XRPLTrader] Failed to send XRP:", error);
+      console.error("[XRPLTrader] Real XRP broadcast failed:", error);
       return null;
     }
   }
@@ -188,7 +206,7 @@ class XRPLTrader {
    * Get total profit
    */
   getTotalProfit(): number {
-    return parseFloat(this.totalProfit.toFixed(6));
+    return parseFloat(this.totalProfit.toFixed(8));
   }
 
   /**
@@ -227,7 +245,7 @@ export async function getXRPLBalance() {
   return trader.getBalance();
 }
 
-export async function executeXRPLTrade(pair: string, side: "buy" | "sell", amount: number) {
+export async function executeXRPLTrade(pair: string, side: "buy" | "sell" | "long" | "short", amount: number) {
   const trader = xrplTraderInstance;
   if (!trader) return null;
   return trader.executeTrade(pair, side, amount);

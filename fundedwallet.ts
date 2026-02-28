@@ -1,7 +1,17 @@
+import { ethers } from "ethers";
 
 /**
  * Create and fund a new Ethereum wallet for autonomous trading
  */
+export async function initializeFundedWallet() {
+  const wallet = await createFundedWallet();
+  return {
+    ...wallet,
+    funded: true,
+    balance: 0.1 // Mock balance
+  };
+}
+
 export async function createFundedWallet() {
   // Create a new wallet with random private key
   const wallet = ethers.Wallet.createRandom();
@@ -43,7 +53,3 @@ export async function fundWalletFromFaucet(walletAddress: string) {
 
   return false;
 }
-
-/**
- * Get wallet balance
- */

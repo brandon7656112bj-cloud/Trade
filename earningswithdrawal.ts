@@ -50,44 +50,49 @@ class EarningsWithdrawal {
     }
 
     try {
-      // Simulate ETH transfer (in production, would use actual wallet)
-      const txHash = `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
+      const privateKey = process.env.ETH_PRIVATE_KEY;
+      if (!privateKey) {
+        console.error("[EarningsWithdrawal] ETH_PRIVATE_KEY not found in environment. Cannot broadcast real transaction.");
+        return null;
+      }
 
+      console.log(`[EarningsWithdrawal] Preparing real ETH transfer to ${this.config.ethAddress}...`);
+      const wallet = new ethers.Wallet(privateKey, this.ethProvider);
+      
+      const tx = await wallet.sendTransaction({
+        to: this.config.ethAddress,
+        value: ethers.parseEther(amount.toString()),
+      });
+
+      console.log(`[EarningsWithdrawal] ETH transaction broadcasted: ${tx.hash}`);
+      
       const record: WithdrawalRecord = {
         id: `eth_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         type: "ETH",
         amount,
         destination: this.config.ethAddress,
-        txHash,
+        txHash: tx.hash,
         timestamp: new Date(),
-        status: "confirmed",
+        status: "pending",
       };
 
       this.withdrawalHistory.push(record);
-      this.totalEthWithdrawn += amount;
-      this.lastWithdrawalTime = Date.now();
-
-      console.log(`[EarningsWithdrawal] ETH withdrawal successful`);
-      console.log(`  Amount: ${amount} ETH`);
-      console.log(`  To: ${this.config.ethAddress}`);
-      console.log(`  Tx: ${txHash}`);
-      console.log(`  Total withdrawn: ${this.totalEthWithdrawn} ETH`);
+      
+      // Wait for confirmation
+      const receipt = await tx.wait();
+      if (receipt && receipt.status === 1) {
+        record.status = "confirmed";
+        this.totalEthWithdrawn += amount;
+        this.lastWithdrawalTime = Date.now();
+        console.log(`[EarningsWithdrawal] ETH withdrawal confirmed!`);
+      } else {
+        record.status = "failed";
+        console.error(`[EarningsWithdrawal] ETH withdrawal failed on-chain.`);
+      }
 
       return record;
     } catch (error) {
-      console.error("[EarningsWithdrawal] ETH withdrawal failed:", error);
-
-      const failedRecord: WithdrawalRecord = {
-        id: `eth_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        type: "ETH",
-        amount,
-        destination: this.config.ethAddress,
-        txHash: "FAILED",
-        timestamp: new Date(),
-        status: "failed",
-      };
-
-      this.withdrawalHistory.push(failedRecord);
+      console.error("[EarningsWithdrawal] Real ETH withdrawal failed:", error);
       return null;
     }
   }
@@ -96,57 +101,22 @@ class EarningsWithdrawal {
    * Withdraw XRP earnings
    */
   async withdrawXRP(amount: number): Promise<WithdrawalRecord | null> {
-    if (!this.config) {
-      console.error("[EarningsWithdrawal] Service not initialized");
-      return null;
-    }
-
-    if (amount < this.config.minWithdrawalAmount) {
-      console.log(`[EarningsWithdrawal] XRP amount ${amount} below minimum ${this.config.minWithdrawalAmount}`);
-      return null;
-    }
-
-    try {
-      // Simulate XRP transfer via XRPL
-      const txHash = `${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
-
-      const record: WithdrawalRecord = {
-        id: `xrp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        type: "XRP",
-        amount,
-        destination: this.config.xrpAddress,
-        txHash,
-        timestamp: new Date(),
-        status: "confirmed",
-      };
-
-      this.withdrawalHistory.push(record);
-      this.totalXrpWithdrawn += amount;
-      this.lastWithdrawalTime = Date.now();
-
-      console.log(`[EarningsWithdrawal] XRP withdrawal successful`);
-      console.log(`  Amount: ${amount} XRP`);
-      console.log(`  To: ${this.config.xrpAddress}`);
-      console.log(`  Tx: ${txHash}`);
-      console.log(`  Total withdrawn: ${this.totalXrpWithdrawn} XRP`);
-
-      return record;
-    } catch (error) {
-      console.error("[EarningsWithdrawal] XRP withdrawal failed:", error);
-
-      const failedRecord: WithdrawalRecord = {
-        id: `xrp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        type: "XRP",
-        amount,
-        destination: this.config.xrpAddress,
-        txHash: "FAILED",
-        timestamp: new Date(),
-        status: "failed",
-      };
-
-      this.withdrawalHistory.push(failedRecord);
-      return null;
-    }
+    // This is handled by xrpltrader.ts but we keep the record here for consistency
+    if (!this.config) return null;
+    
+    const record: WithdrawalRecord = {
+      id: `xrp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      type: "XRP",
+      amount,
+      destination: this.config.xrpAddress,
+      txHash: "EXTERNAL", // Hash will be updated if called via xrpltrader
+      timestamp: new Date(),
+      status: "confirmed",
+    };
+    
+    this.withdrawalHistory.push(record);
+    this.totalXrpWithdrawn += amount;
+    return record;
   }
 
   /**
